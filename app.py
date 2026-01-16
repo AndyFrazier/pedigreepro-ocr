@@ -36,8 +36,14 @@ def process_pedigree():
         pedigree_file = request.files['pedigreeImage']
         
         # Convert to PIL Images
-        details_img = Image.open(io.BytesIO(details_file.read()))
-        pedigree_img = Image.open(io.BytesIO(pedigree_file.read()))
+    # Resize images to reduce memory usage
+   details_img = Image.open(io.BytesIO(details_file.read()))
+   if details_img.width > 2000:
+       details_img.thumbnail((2000, 2000))
+   
+   pedigree_img = Image.open(io.BytesIO(pedigree_file.read()))
+   if pedigree_img.width > 2000:
+       pedigree_img.thumbnail((2000, 2000))
         
         print('Processing details image...')
         details_text = pytesseract.image_to_string(details_img)
