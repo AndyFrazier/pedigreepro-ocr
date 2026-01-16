@@ -21,7 +21,7 @@ EXPOSE 10000
 
 # Run the application
 CMD ["gunicorn", "--bind", "0.0.0.0:10000", "app:app"]
-```
+
 
 
 
