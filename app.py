@@ -35,24 +35,20 @@ def process_pedigree():
         details_file = request.files['detailsImage']
         pedigree_file = request.files['pedigreeImage']
         
-        # Convert to PIL Images and resize to reduce memory usage
-        print('Processing details image...')
+        # TEST MODE: Process ONLY details image
+        print('Processing details image ONLY (test mode)...')
         details_file_content = details_file.read()
         details_img = Image.open(io.BytesIO(details_file_content))
-        if details_img.width > 2000:
-            details_img.thumbnail((2000, 2000))
+        if details_img.width > 1000:
+            details_img.thumbnail((1000, 1000))
         
         details_text = pytesseract.image_to_string(details_img)
         
-        print('Processing pedigree image...')
-        pedigree_file_content = pedigree_file.read()
-        pedigree_img = Image.open(io.BytesIO(pedigree_file_content))
-        if pedigree_img.width > 2000:
-            pedigree_img.thumbnail((2000, 2000))
+        # Skip pedigree for now
+        print('Skipping pedigree image to save memory...')
+        pedigree_text = "TEST MODE: Pedigree processing skipped"
         
-        pedigree_text = pytesseract.image_to_string(pedigree_img)
-        
-        print(f'OCR complete - Details: {len(details_text)} chars, Pedigree: {len(pedigree_text)} chars')
+        print(f'OCR complete - Details: {len(details_text)} chars')
         
         return jsonify({
             'success': True,
