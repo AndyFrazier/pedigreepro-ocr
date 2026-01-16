@@ -35,20 +35,21 @@ def process_pedigree():
         details_file = request.files['detailsImage']
         pedigree_file = request.files['pedigreeImage']
         
-        # Convert to PIL Images
-    # Resize images to reduce memory usage
-   details_img = Image.open(io.BytesIO(details_file.read()))
-   if details_img.width > 2000:
-       details_img.thumbnail((2000, 2000))
-   
-   pedigree_img = Image.open(io.BytesIO(pedigree_file.read()))
-   if pedigree_img.width > 2000:
-       pedigree_img.thumbnail((2000, 2000))
-        
+        # Convert to PIL Images and resize to reduce memory usage
         print('Processing details image...')
+        details_file_content = details_file.read()
+        details_img = Image.open(io.BytesIO(details_file_content))
+        if details_img.width > 2000:
+            details_img.thumbnail((2000, 2000))
+        
         details_text = pytesseract.image_to_string(details_img)
         
         print('Processing pedigree image...')
+        pedigree_file_content = pedigree_file.read()
+        pedigree_img = Image.open(io.BytesIO(pedigree_file_content))
+        if pedigree_img.width > 2000:
+            pedigree_img.thumbnail((2000, 2000))
+        
         pedigree_text = pytesseract.image_to_string(pedigree_img)
         
         print(f'OCR complete - Details: {len(details_text)} chars, Pedigree: {len(pedigree_text)} chars')
@@ -67,7 +68,7 @@ def process_pedigree():
         }), 500
 
 if __name__ == '__main__':
-    # Railway sets PORT environment variable
+    # Railway/Render sets PORT environment variable
     import os
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
