@@ -36,33 +36,17 @@ def process_pedigree():
         details_file = request.files['detailsImage']
         pedigree_file = request.files['pedigreeImage']
         
-        # Process FIRST image (details)
-        print('Processing details image...')
-        details_file_content = details_file.read()
-        details_img = Image.open(io.BytesIO(details_file_content))
+        # TEST: Skip details, process ONLY pedigree
+        print('Skipping details image...')
+        details_text = "TEST MODE: Details skipped"
         
-        # Resize aggressively
-        if details_img.width > 1000:
-            details_img.thumbnail((1000, 1000))
-        
-        # Extract text
-        details_text = pytesseract.image_to_string(details_img)
-        print(f'Details OCR complete: {len(details_text)} chars')
-        
-        # CRITICAL: Clean up memory before processing second image
-        del details_img
-        del details_file_content
-        gc.collect()  # Force garbage collection
-        
-        print('Memory cleaned, processing pedigree image...')
-        
-        # Process SECOND image (pedigree)
+        print('Processing pedigree image ONLY...')
         pedigree_file_content = pedigree_file.read()
         pedigree_img = Image.open(io.BytesIO(pedigree_file_content))
         
-        # Resize aggressively
-        if pedigree_img.width > 1000:
-            pedigree_img.thumbnail((1000, 1000))
+        # Resize to 600px MAX
+        if pedigree_img.width > 600:
+            pedigree_img.thumbnail((600, 600))
         
         # Extract text
         pedigree_text = pytesseract.image_to_string(pedigree_img)
@@ -73,7 +57,7 @@ def process_pedigree():
         del pedigree_file_content
         gc.collect()
         
-        print('Both images processed successfully!')
+        print('Pedigree processed successfully!')
         
         return jsonify({
             'success': True,
