@@ -1,22 +1,38 @@
 # OCR Service for PedigreePro
-# This processes pedigree images and returns text
+# Using Google Cloud Vision API
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from google.cloud import vision
 from PIL import Image
-import pytesseract
 import io
-import gc
+import os
 
 app = Flask(__name__)
-CORS(app)  # Allow requests from your Netlify site
+CORS(app)
+
+# Set up Google Cloud Vision client
+os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON'] = os.environ.get('GOOGLE_CLOUD_API_KEY', '')
+
+def get_vision_client():
+    """Create Vision API client using API key"""
+    api_key = os.environ.get('GOOGLE_CLOUD_API_KEY')
+    if not api_key:
+        raise ValueError("GOOGLE_CLOUD_API_KEY environment variable not set")
+    
+    # Create client with API key
+    from google.cloud.vision_v1 import ImageAnnotatorClient
+    from google.api_core.client_options import ClientOptions
+    
+    client_options = ClientOptions(api_key=api_key)
+    return ImageAnnotatorClient(client_options=client_options)
 
 @app.route('/', methods=['GET'])
 def home():
     return jsonify({
         'status': 'running',
-        'service': 'PedigreePro OCR Service',
-        'version': '1.0'
+        'service': 'PedigreePro OCR Service (Google Vision)',
+        'version': '2.0'
     })
 
 @app.route('/health', methods=['GET'])
@@ -36,28 +52,34 @@ def process_pedigree():
         details_file = request.files['detailsImage']
         pedigree_file = request.files['pedigreeImage']
         
-        # TEST: Skip details, process ONLY pedigree
-        print('Skipping details image...')
-        details_text = "TEST MODE: Details skipped"
+        print('Initializing Google Cloud Vision client...')
+        client = get_vision_client()
         
-        print('Processing pedigree image ONLY...')
-        pedigree_file_content = pedigree_file.read()
-        pedigree_img = Image.open(io.BytesIO(pedigree_file_content))
+        # Process details image
+        print('Processing details image with Google Vision...')
+        details_content = details_file.read()
+        details_image = vision.Image(content=details_content)
+        details_response = client.text_detection(image=details_image)
         
-        # Resize to 600px MAX
-        if pedigree_img.width > 600:
-            pedigree_img.thumbnail((600, 600))
+        if details_response.error.message:
+            raise Exception(f'Google Vision error: {details_response.error.message}')
         
-        # Extract text
-        pedigree_text = pytesseract.image_to_string(pedigree_img)
+        details_text = details_response.text_annotations[0].description if details_response.text_annotations else ""
+        print(f'Details OCR complete: {len(details_text)} chars')
+        
+        # Process pedigree image
+        print('Processing pedigree image with Google Vision...')
+        pedigree_content = pedigree_file.read()
+        pedigree_image = vision.Image(content=pedigree_content)
+        pedigree_response = client.text_detection(image=pedigree_image)
+        
+        if pedigree_response.error.message:
+            raise Exception(f'Google Vision error: {pedigree_response.error.message}')
+        
+        pedigree_text = pedigree_response.text_annotations[0].description if pedigree_response.text_annotations else ""
         print(f'Pedigree OCR complete: {len(pedigree_text)} chars')
         
-        # Clean up
-        del pedigree_img
-        del pedigree_file_content
-        gc.collect()
-        
-        print('Pedigree processed successfully!')
+        print('Both images processed successfully with Google Vision!')
         
         return jsonify({
             'success': True,
@@ -75,7 +97,6 @@ def process_pedigree():
         }), 500
 
 if __name__ == '__main__':
-    # Railway/Render sets PORT environment variable
     import os
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
