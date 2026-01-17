@@ -6,6 +6,7 @@ from flask_cors import CORS
 from PIL import Image
 import pytesseract
 import io
+import gc
 
 app = Flask(__name__)
 CORS(app)  # Allow requests from your Netlify site
@@ -35,20 +36,44 @@ def process_pedigree():
         details_file = request.files['detailsImage']
         pedigree_file = request.files['pedigreeImage']
         
-        # TEST MODE: Process ONLY details image
-        print('Processing details image ONLY (test mode)...')
+        # Process FIRST image (details)
+        print('Processing details image...')
         details_file_content = details_file.read()
         details_img = Image.open(io.BytesIO(details_file_content))
+        
+        # Resize aggressively
         if details_img.width > 1000:
             details_img.thumbnail((1000, 1000))
         
+        # Extract text
         details_text = pytesseract.image_to_string(details_img)
+        print(f'Details OCR complete: {len(details_text)} chars')
         
-        # Skip pedigree for now
-        print('Skipping pedigree image to save memory...')
-        pedigree_text = "TEST MODE: Pedigree processing skipped"
+        # CRITICAL: Clean up memory before processing second image
+        del details_img
+        del details_file_content
+        gc.collect()  # Force garbage collection
         
-        print(f'OCR complete - Details: {len(details_text)} chars')
+        print('Memory cleaned, processing pedigree image...')
+        
+        # Process SECOND image (pedigree)
+        pedigree_file_content = pedigree_file.read()
+        pedigree_img = Image.open(io.BytesIO(pedigree_file_content))
+        
+        # Resize aggressively
+        if pedigree_img.width > 1000:
+            pedigree_img.thumbnail((1000, 1000))
+        
+        # Extract text
+        pedigree_text = pytesseract.image_to_string(pedigree_img)
+        print(f'Pedigree OCR complete: {len(pedigree_text)} chars')
+        
+        # Clean up
+        del pedigree_img
+        del pedigree_file_content
+        gc.collect()
+        
+        print('Both images processed successfully!')
         
         return jsonify({
             'success': True,
@@ -58,6 +83,8 @@ def process_pedigree():
         
     except Exception as e:
         print(f'Error: {str(e)}')
+        import traceback
+        print(traceback.format_exc())
         return jsonify({
             'success': False,
             'error': str(e)
