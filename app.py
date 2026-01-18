@@ -90,43 +90,25 @@ def process_pedigree():
 @app.route('/process-sheep-pedigree', methods=['POST'])
 def process_sheep_pedigree():
     try:
-        print('Received sheep pedigree PDF processing request')
+        print('Received sheep pedigree image processing request')
         
-        if 'pdfFile' not in request.files:
+        if 'pedigreeFile' not in request.files:
             return jsonify({
                 'success': False,
-                'error': 'No PDF file provided'
+                'error': 'No image file provided'
             }), 400
         
-        pdf_file = request.files['pdfFile']
-        print(f'Processing PDF: {pdf_file.filename}')
+        image_file = request.files['pedigreeFile']
+        print(f'Processing image: {image_file.filename}')
         
         print('Initializing Google Cloud Vision client...')
         client = get_vision_client()
         
-        pdf_content = pdf_file.read()
+        image_content = image_file.read()
         
-        try:
-            from pdf2image import convert_from_bytes
-            
-            images = convert_from_bytes(pdf_content, first_page=1, last_page=1)
-            
-            if not images:
-                raise Exception("Could not convert PDF to image")
-            
-            img_byte_arr = io.BytesIO()
-            images[0].save(img_byte_arr, format='PNG')
-            img_content = img_byte_arr.getvalue()
-            
-        except ImportError:
-            return jsonify({
-                'success': False,
-                'error': 'PDF conversion library not installed'
-            }), 400
+        print('Calling Google Vision API for image...')
         
-        print('Calling Google Vision API...')
-        
-        image = vision.Image(content=img_content)
+        image = vision.Image(content=image_content)
         response = client.text_detection(image=image)
         
         if response.error.message:
@@ -135,6 +117,7 @@ def process_sheep_pedigree():
         text = response.text_annotations[0].description if response.text_annotations else ""
         
         print(f'OCR complete, extracted {len(text)} characters')
+        print(f'First 200 chars: {text[:200]}')
         
         return jsonify({
             'success': True,
