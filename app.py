@@ -168,7 +168,7 @@ def process_sheep_pedigree():
             'success': False,
             'error': str(e)
         }), 500
-```
+
 
 **Also need to add `pdf2image` to requirements.txt:**
 
