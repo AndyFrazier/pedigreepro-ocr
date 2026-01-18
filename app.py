@@ -1,6 +1,5 @@
 # OCR Service for PedigreePro
 # Using Google Cloud Vision API
-
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from google.cloud import vision
@@ -95,6 +94,59 @@ def process_pedigree():
             'success': False,
             'error': str(e)
         }), 500
+
+# ========== ADD THIS NEW ENDPOINT HERE ==========
+@app.route('/process-sheep-pedigree', methods=['POST'])
+def process_sheep_pedigree():
+    """Process a sheep pedigree PDF using Google Vision OCR"""
+    try:
+        print('Received sheep pedigree PDF processing request')
+        
+        if 'pdfFile' not in request.files:
+            return jsonify({
+                'success': False,
+                'error': 'No PDF file provided'
+            }), 400
+        
+        pdf_file = request.files['pdfFile']
+        print(f'Processing PDF: {pdf_file.filename}')
+        
+        print('Initializing Google Cloud Vision client...')
+        client = get_vision_client()
+        
+        # Read PDF content
+        pdf_content = pdf_file.read()
+        
+        # For PDFs, Google Vision can handle them directly
+        print('Calling Google Vision API for PDF...')
+        
+        # Create image from PDF content
+        image = vision.Image(content=pdf_content)
+        response = client.text_detection(image=image)
+        
+        if response.error.message:
+            raise Exception(f'Google Vision error: {response.error.message}')
+        
+        # Extract text
+        text = response.text_annotations[0].description if response.text_annotations else ""
+        
+        print(f'OCR complete, extracted {len(text)} characters')
+        print(f'First 200 chars: {text[:200]}')
+        
+        return jsonify({
+            'success': True,
+            'text': text
+        })
+        
+    except Exception as e:
+        print(f'Error processing PDF: {str(e)}')
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+# ========== END OF NEW ENDPOINT ==========
 
 if __name__ == '__main__':
     import os
