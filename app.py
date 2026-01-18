@@ -117,11 +117,33 @@ def process_sheep_pedigree():
         # Read PDF content
         pdf_content = pdf_file.read()
         
-        # For PDFs, Google Vision can handle them directly
-        print('Calling Google Vision API for PDF...')
+        # Convert PDF to image using PIL
+        # Google Vision needs images, not PDFs directly
+        try:
+            from pdf2image import convert_from_bytes
+            
+            # Convert first page of PDF to image
+            images = convert_from_bytes(pdf_content, first_page=1, last_page=1)
+            
+            if not images:
+                raise Exception("Could not convert PDF to image")
+            
+            # Convert PIL image to bytes
+            img_byte_arr = io.BytesIO()
+            images[0].save(img_byte_arr, format='PNG')
+            img_content = img_byte_arr.getvalue()
+            
+        except ImportError:
+            # If pdf2image not available, return error
+            return jsonify({
+                'success': False,
+                'error': 'PDF conversion library not installed. Please upload an image instead.'
+            }), 400
         
-        # Create image from PDF content
-        image = vision.Image(content=pdf_content)
+        print('Calling Google Vision API for converted PDF image...')
+        
+        # Create image from converted content
+        image = vision.Image(content=img_content)
         response = client.text_detection(image=image)
         
         if response.error.message:
@@ -146,6 +168,13 @@ def process_sheep_pedigree():
             'success': False,
             'error': str(e)
         }), 500
+```
+
+**Also need to add `pdf2image` to requirements.txt:**
+
+Add this line to your `requirements.txt` on Render:
+```
+pdf2image==1.16.3
 # ========== END OF NEW ENDPOINT ==========
 
 if __name__ == '__main__':
