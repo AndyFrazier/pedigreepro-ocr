@@ -4,3 +4,6 @@ Pillow==10.4.0
 google-cloud-vision==3.7.0
 gunicorn==21.2.0
 pdf2image==1.16.3
+anthropic
+supabase
+python-dotenv
