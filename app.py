@@ -26,7 +26,7 @@ def home():
     return jsonify({
         'status': 'running',
         'service': 'PedigreePro OCR Service (Google Vision)',
-        'version': '2.0'
+        'version': '3.0 - Position-based sorting'
     })
 
 @app.route('/health', methods=['GET'])
@@ -87,6 +87,46 @@ def process_pedigree():
             'error': str(e)
         }), 500
 
+def sort_text_blocks_by_position(text_annotations):
+    """
+    Sort text blocks by their visual position (top-to-bottom, left-to-right).
+    Uses bounding box coordinates from Google Vision.
+    
+    text_annotations[0] is the full text, text_annotations[1:] are individual blocks.
+    """
+    if len(text_annotations) <= 1:
+        return []
+    
+    # Skip index 0 (full text) and get individual text blocks
+    blocks = []
+    for annotation in text_annotations[1:]:
+        # Get bounding box vertices
+        vertices = annotation.bounding_poly.vertices
+        
+        # Calculate center point of bounding box
+        x_coords = [v.x for v in vertices]
+        y_coords = [v.y for v in vertices]
+        center_x = sum(x_coords) / len(x_coords)
+        center_y = sum(y_coords) / len(y_coords)
+        
+        blocks.append({
+            'text': annotation.description,
+            'x': center_x,
+            'y': center_y,
+            'top': min(y_coords),
+            'left': min(x_coords)
+        })
+    
+    # Sort by Y coordinate (top to bottom), then X coordinate (left to right)
+    # Group by rows first (within 20 pixels Y tolerance)
+    sorted_blocks = sorted(blocks, key=lambda b: (b['top'], b['left']))
+    
+    # Reconstruct text in visual reading order
+    sorted_text = '\n'.join([block['text'] for block in sorted_blocks])
+    
+    print(f'Sorted {len(blocks)} text blocks by position')
+    return sorted_text
+
 @app.route('/process-sheep-pedigree', methods=['POST'])
 def process_sheep_pedigree():
     try:
@@ -114,14 +154,21 @@ def process_sheep_pedigree():
         if response.error.message:
             raise Exception(f'Google Vision error: {response.error.message}')
         
-        text = response.text_annotations[0].description if response.text_annotations else ""
+        # NEW: Sort text blocks by position instead of using Google's default order
+        print('Sorting text blocks by position...')
+        sorted_text = sort_text_blocks_by_position(response.text_annotations)
         
-        print(f'OCR complete, extracted {len(text)} characters')
-        print(f'First 200 chars: {text[:200]}')
+        # Fallback to original method if sorting fails
+        if not sorted_text:
+            print('Position sorting failed, using default text')
+            sorted_text = response.text_annotations[0].description if response.text_annotations else ""
+        
+        print(f'OCR complete, extracted {len(sorted_text)} characters')
+        print(f'First 200 chars: {sorted_text[:200]}')
         
         return jsonify({
             'success': True,
-            'text': text
+            'text': sorted_text
         })
         
     except Exception as e:
