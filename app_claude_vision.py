@@ -56,70 +56,60 @@ def process_sheep_pedigree():
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         
         # Create the prompt for Claude
-        prompt = """You are extracting data from a Ryeland sheep pedigree certificate. This is a VISUAL DOCUMENT with a specific standard layout.
+        prompt = """I need you to extract ALL animals from this Ryeland sheep pedigree certificate and return them as structured JSON.
 
-CRITICAL LAYOUT RULES - READ CAREFULLY:
-The pedigree is laid out in COLUMNS from left to right:
-- Column 1 (LEFTMOST): Main animal (the subject of the certificate)
-- Column 2: Parents - SIRE on TOP row, DAM on BOTTOM row
-- Column 3: Grandparents - 4 animals in 4 rows
-- Column 4: Great-grandparents - 8 animals in 8 rows  
-- Column 5: Great-great-grandparents - 16 animals in 16 rows
+The pedigree has a standard structure:
+- Main animal (subject) in the center
+- Sire (father) on the left, top position
+- Dam (mother) on the left, bottom position  
+- Then grandparents, great-grandparents, etc. in boxes to the right
 
-PARENT IDENTIFICATION - ABSOLUTELY CRITICAL:
-Look at Column 2 (parents column) which has TWO boxes:
-- The TOP box in Column 2 = SIRE (father) - This connects to the top half of the pedigree
-- The BOTTOM box in Column 2 = DAM (mother) - This connects to the bottom half of the pedigree
+For EACH animal in the pedigree, extract:
+- name: Animal's name (or null if missing)
+- registration: Registration number like M12345 or F12345
+- ukRegistration: UK registration number in parentheses (or null)
+- gender: "Male" or "Female" (M prefix = Male, F prefix = Female)
+- color: Usually "White" (or null)
+- birthDate: In format YYYY-MM-DD (or null)
 
-To identify which is which:
-1. Look at the VERTICAL POSITION in Column 2
-2. TOP position = sire, BOTTOM position = dam
-3. Do NOT rely on registration prefix (M/F) alone - always use POSITION
-4. The sire's parents (paternal grandparents) will be in the TOP TWO rows of Column 3
-5. The dam's parents (maternal grandparents) will be in the BOTTOM TWO rows of Column 3
-
-GRANDPARENT MAPPING:
-Column 3 has 4 boxes from top to bottom:
-- Row 1 (topmost): paternalGrandsire (sire's sire)
-- Row 2: paternalGranddam (sire's dam)
-- Row 3: maternalGrandsire (dam's sire)
-- Row 4 (bottommost): maternalGranddam (dam's dam)
-
-For EACH animal extract these fields:
-- name: Animal's name (or null if blank/missing)
-- registration: Registration number like M12345 or F12345 (required)
-- ukRegistration: UK registration in parentheses if present (or null)
-- gender: "Male" if M prefix, "Female" if F prefix
-- color: Usually "White" (or null if missing)
-- birthDate: Format YYYY-MM-DD (or null if missing)
-
-Return ONLY valid JSON in this EXACT structure:
+Return JSON in this EXACT structure:
 {
-  "main": { all fields },
+  "main": {
+    "name": "...",
+    "registration": "...",
+    "ukRegistration": "...",
+    "gender": "...",
+    "color": "...",
+    "birthDate": "..."
+  },
   "parents": {
-    "sire": { all fields for TOP animal in Column 2 },
-    "dam": { all fields for BOTTOM animal in Column 2 }
+    "sire": { ... same fields ... },
+    "dam": { ... same fields ... }
   },
   "grandparents": {
-    "paternalGrandsire": { Row 1 of Column 3 },
-    "paternalGranddam": { Row 2 of Column 3 },
-    "maternalGrandsire": { Row 3 of Column 3 },
-    "maternalGranddam": { Row 4 of Column 3 }
+    "paternalGrandsire": { ... },
+    "paternalGranddam": { ... },
+    "maternalGrandsire": { ... },
+    "maternalGranddam": { ... }
   },
   "greatGrandparents": [
-    { "position": "GGGS1", ... top to bottom of Column 4 ... }
+    { "position": "GGGS1", ... },
+    { "position": "GGGD1", ... },
+    ... 8 animals total ...
   ],
   "greatGreatGrandparents": [
-    { "position": "GGGGS1", ... top to bottom of Column 5 ... }
+    { "position": "GGGGS1", ... },
+    { "position": "GGGGD1", ... },
+    ... 16 animals total ...
   ]
 }
 
-DOUBLE-CHECK YOUR WORK:
-Before returning, verify:
-1. The sire (parents.sire) is the TOP box in Column 2
-2. The dam (parents.dam) is the BOTTOM box in Column 2
-3. All registrations are correctly extracted
-4. Return ONLY the JSON with no additional text or markdown"""
+IMPORTANT: 
+- Read the pedigree LEFT to RIGHT
+- Sire is ALWAYS top left, Dam is ALWAYS bottom left
+- Return ONLY valid JSON, no other text
+- If a field is missing, use null
+"""
         
         # Call Claude API
         message = client.messages.create(
