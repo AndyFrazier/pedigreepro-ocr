@@ -58,11 +58,22 @@ def process_sheep_pedigree():
         # Create the prompt for Claude
         prompt = """I need you to extract ALL animals from this Ryeland sheep pedigree certificate and return them as structured JSON.
 
-The pedigree has a standard structure:
-- Main animal (subject) in the center
-- Sire (father) on the left, top position
-- Dam (mother) on the left, bottom position  
-- Then grandparents, great-grandparents, etc. in boxes to the right
+CRITICAL - PEDIGREE LAYOUT:
+The pedigree certificate has a TREE STRUCTURE with the main animal at the TOP and 4 COLUMNS of boxes extending to the RIGHT:
+
+- Main animal: Located at the TOP of the page
+- Column 1 (LEFTMOST): 2 boxes containing the PARENTS
+  - TOP box (GREY/SHADED) = SIRE (father)
+  - BOTTOM box (WHITE) = DAM (mother)
+- Column 2: 4 boxes containing GRANDPARENTS
+- Column 3: 8 boxes containing GREAT-GRANDPARENTS
+- Column 4 (RIGHTMOST): 16 boxes containing GREAT-GREAT-GRANDPARENTS
+
+CRITICAL FOR PARENTS:
+- The SIRE is in the TOP GREY BOX of Column 1 (the leftmost column)
+- The DAM is in the BOTTOM WHITE BOX of Column 1 (the leftmost column)
+- DO NOT read animals from Column 2 or beyond as the parents
+- Each box shows the animal's name, registration number, and color
 
 For EACH animal in the pedigree, extract:
 - name: Animal's name (or null if missing)
@@ -83,8 +94,8 @@ Return JSON in this EXACT structure:
     "birthDate": "..."
   },
   "parents": {
-    "sire": { ... same fields ... },
-    "dam": { ... same fields ... }
+    "sire": { ... fields from TOP GREY box in Column 1 ... },
+    "dam": { ... fields from BOTTOM WHITE box in Column 1 ... }
   },
   "grandparents": {
     "paternalGrandsire": { ... },
@@ -105,8 +116,8 @@ Return JSON in this EXACT structure:
 }
 
 IMPORTANT: 
-- Read the pedigree LEFT to RIGHT
-- Sire is ALWAYS top left, Dam is ALWAYS bottom left
+- Male boxes are GREY/SHADED, female boxes are WHITE
+- Extract animals from LEFT to RIGHT by column
 - Return ONLY valid JSON, no other text
 - If a field is missing, use null
 """
