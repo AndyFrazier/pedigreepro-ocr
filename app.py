@@ -203,6 +203,12 @@ def sort_pedigree_blocks_by_columns(text_annotations):
         dog_text = '\n'.join([b['text'] for b in box_blocks])  # Use newlines to preserve structure
         dog_texts.append(dog_text)
     
+    # Create dog list for debugging (first 80 chars of each)
+    dog_list = []
+    for i, dog_text in enumerate(dog_texts):
+        preview = dog_text.replace('\n', ' ')[:80]
+        dog_list.append(f'Dog {i+1}: {preview}')
+    
     # Join all dogs with newlines
     sorted_text = '\n'.join(dog_texts)
     
@@ -214,7 +220,8 @@ def sort_pedigree_blocks_by_columns(text_annotations):
             'totalBlocks': len(blocks),
             'totalDogs': len(dog_texts),
             'width': int(width),
-            'height': int(height)
+            'height': int(height),
+            'dogList': dog_list  # Add list of dogs to debug output
         }
     }
 
