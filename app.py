@@ -103,13 +103,10 @@ def process_pedigree():
 
 def sort_pedigree_blocks_by_columns(text_annotations):
     """
-    Sort text blocks by pedigree column structure:
-    - Pedigrees are read LEFT-TO-RIGHT by columns
-    - Within each column, read TOP-TO-BOTTOM
-    - Dynamically detects column boundaries based on X-coordinate clustering
+    Sort text blocks by pedigree column and box structure using hardcoded coordinates.
     
-    Standard pedigree structure:
-    - Column 1: Main animal
+    Standard pedigree structure (4 columns, read left-to-right):
+    - Column 1: Main animal (1 box)
     - Column 2: Parents (2 boxes)
     - Column 3: Grandparents (4 boxes)
     - Column 4: Great-grandparents (8 boxes)
@@ -137,93 +134,117 @@ def sort_pedigree_blocks_by_columns(text_annotations):
     if not blocks:
         return {'text': '', 'debug': {}}
     
-    print(f'Processing {len(blocks)} text blocks')
+    print(f'Processing {len(blocks)} text blocks with hardcoded grid')
     
-    # Get unique X positions (left edge of each block)
-    x_positions = sorted(set([b['left'] for b in blocks]))
+    # Get image dimensions from blocks
+    max_x = max(b['left'] for b in blocks) + 100  # approximate right edge
+    max_y = max(b['top'] for b in blocks) + 100   # approximate bottom edge
     
-    print(f'Found {len(x_positions)} unique X positions')
+    # Scale factors (assuming standard template size, but allowing for scaling)
+    # Standard dimensions: width ~1122, height ~1841
+    x_scale = max_x / 1122.0
+    y_scale = max_y / 1841.0
     
-    # Find gaps between X positions to identify column boundaries
-    # Large gaps indicate transitions between columns
-    gaps = []
-    for i in range(len(x_positions) - 1):
-        gap_size = x_positions[i + 1] - x_positions[i]
-        gaps.append({
-            'after_x': x_positions[i],
-            'gap_size': gap_size,
-            'index': i
-        })
+    print(f'Detected scaling: X={x_scale:.2f}, Y={y_scale:.2f}')
     
-    # For a 4-column pedigree, we need 3 column boundaries
-    # Find the 3 largest gaps
-    if len(gaps) < 3:
-        # Not enough gaps - fall back to simple left-to-right, top-to-bottom sort
-        print('Warning: Could not detect 4 columns, using simple sort')
-        sorted_blocks = sorted(blocks, key=lambda b: (b['left'], b['top']))
-        sorted_text = '\n'.join([block['text'] for block in sorted_blocks])
-        return {
-            'text': sorted_text,
-            'debug': {
-                'warning': 'Not enough gaps detected',
-                'totalBlocks': len(blocks),
-                'uniqueXPositions': len(x_positions)
-            }
-        }
+    # Define column X boundaries (scaled)
+    col_boundaries = {
+        1: (0, int(225 * x_scale)),
+        2: (int(225 * x_scale), int(315 * x_scale)),
+        3: (int(315 * x_scale), int(457 * x_scale)),
+        4: (int(457 * x_scale), int(max_x))
+    }
     
-    gaps.sort(key=lambda g: g['gap_size'], reverse=True)
-    top_3_gaps = gaps[:3]
+    # Define box Y boundaries for each column (scaled)
+    # Y ranges calculated as percentages of usable height (24 to 1825)
+    top_border = int(24 * y_scale)
+    bottom_border = int(1825 * y_scale)
+    usable_height = bottom_border - top_border
     
-    # Sort the boundaries left-to-right
-    column_boundaries = sorted([g['after_x'] for g in top_3_gaps])
+    box_boundaries = {
+        1: [(top_border, bottom_border)],  # 1 box
+        2: [  # 2 boxes
+            (top_border, top_border + int(usable_height * 0.5)),
+            (top_border + int(usable_height * 0.5), bottom_border)
+        ],
+        3: [  # 4 boxes
+            (top_border, top_border + int(usable_height * 0.25)),
+            (top_border + int(usable_height * 0.25), top_border + int(usable_height * 0.5)),
+            (top_border + int(usable_height * 0.5), top_border + int(usable_height * 0.75)),
+            (top_border + int(usable_height * 0.75), bottom_border)
+        ],
+        4: [  # 8 boxes
+            (top_border, top_border + int(usable_height * 0.125)),
+            (top_border + int(usable_height * 0.125), top_border + int(usable_height * 0.25)),
+            (top_border + int(usable_height * 0.25), top_border + int(usable_height * 0.375)),
+            (top_border + int(usable_height * 0.375), top_border + int(usable_height * 0.5)),
+            (top_border + int(usable_height * 0.5), top_border + int(usable_height * 0.625)),
+            (top_border + int(usable_height * 0.625), top_border + int(usable_height * 0.75)),
+            (top_border + int(usable_height * 0.75), top_border + int(usable_height * 0.875)),
+            (top_border + int(usable_height * 0.875), bottom_border)
+        ]
+    }
     
-    print(f'Detected column boundaries at X: {column_boundaries}')
-    
-    # Assign each block to a column based on its X position
+    # Assign each block to a column and box
     for block in blocks:
         x = block['left']
-        if x <= column_boundaries[0]:
-            block['column'] = 1
-        elif x <= column_boundaries[1]:
-            block['column'] = 2
-        elif x <= column_boundaries[2]:
-            block['column'] = 3
-        else:
-            block['column'] = 4
+        y = block['top']
+        
+        # Find column
+        block['column'] = None
+        for col_num, (x_min, x_max) in col_boundaries.items():
+            if x_min <= x < x_max:
+                block['column'] = col_num
+                break
+        
+        if block['column'] is None:
+            block['column'] = 4  # Default to rightmost column
+        
+        # Find box within column
+        block['box'] = None
+        boxes_in_col = box_boundaries[block['column']]
+        for box_idx, (y_min, y_max) in enumerate(boxes_in_col):
+            if y_min <= y < y_max:
+                block['box'] = box_idx
+                break
+        
+        if block['box'] is None:
+            # If outside range, assign to nearest box
+            if y < boxes_in_col[0][0]:
+                block['box'] = 0
+            else:
+                block['box'] = len(boxes_in_col) - 1
     
-    # Count blocks per column for verification
-    col_counts = {}
+    # Group blocks by (column, box)
+    boxes_dict = {}
     for block in blocks:
-        col = block['column']
-        col_counts[col] = col_counts.get(col, 0) + 1
+        key = (block['column'], block['box'])
+        if key not in boxes_dict:
+            boxes_dict[key] = []
+        boxes_dict[key].append(block)
     
-    print(f'Blocks per column: {col_counts}')
+    # Sort boxes in reading order (column 1 to 4, top to bottom within each column)
+    sorted_keys = sorted(boxes_dict.keys(), key=lambda k: (k[0], k[1]))
     
-    # Sort: first by column (left to right), then by Y within column (top to bottom)
-    sorted_blocks = sorted(blocks, key=lambda b: (b['column'], b['top']))
+    # Within each box, sort blocks by Y (top to bottom), then concatenate
+    dog_texts = []
+    for key in sorted_keys:
+        box_blocks = sorted(boxes_dict[key], key=lambda b: (b['top'], b['left']))
+        dog_text = ' '.join([b['text'] for b in box_blocks])
+        dog_texts.append(dog_text)
     
-    # Create detailed debug info with first few blocks from each column
-    blocks_by_column = {}
-    for col in [1, 2, 3, 4]:
-        col_blocks = [b for b in sorted_blocks if b['column'] == col]
-        blocks_by_column[f'column_{col}'] = [
-            {'text': b['text'], 'left': b['left'], 'top': b['top']} 
-            for b in col_blocks[:5]  # First 5 blocks from each column
-        ]
+    # Join all dogs with newlines
+    sorted_text = '\n'.join(dog_texts)
     
-    # Reconstruct text in proper pedigree order
-    sorted_text = '\n'.join([block['text'] for block in sorted_blocks])
-    
-    print(f'Successfully sorted {len(blocks)} blocks by column structure')
+    print(f'Successfully grouped {len(blocks)} blocks into {len(dog_texts)} dogs')
     
     return {
         'text': sorted_text,
         'debug': {
             'totalBlocks': len(blocks),
-            'columnBoundaries': column_boundaries,
-            'blocksPerColumn': col_counts,
-            'firstBlocksPerColumn': blocks_by_column,
-            'top3Gaps': [{'after_x': g['after_x'], 'size': g['gap_size']} for g in top_3_gaps]
+            'totalDogs': len(dog_texts),
+            'xScale': round(x_scale, 2),
+            'yScale': round(y_scale, 2)
         }
     }
 
