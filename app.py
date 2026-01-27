@@ -189,10 +189,24 @@ def sort_pedigree_blocks_by_columns(text_annotations):
             else:
                 block['box'] = 3
         else:  # column 4
-            # 8 boxes (12.5% each)
-            block['box'] = int(y_percent * 8)
-            if block['box'] >= 8:
-                block['box'] = 7  # Cap at 7 (0-7 = 8 boxes)
+            # 8 boxes - with special handling for boxes 6 and 7 (dogs 14-15)
+            # to capture year text that falls between them
+            if y_percent < 0.125:
+                block['box'] = 0
+            elif y_percent < 0.25:
+                block['box'] = 1
+            elif y_percent < 0.375:
+                block['box'] = 2
+            elif y_percent < 0.5:
+                block['box'] = 3
+            elif y_percent < 0.625:
+                block['box'] = 4
+            elif y_percent < 0.75:
+                block['box'] = 5
+            elif y_percent < 0.90:  # Expanded boundary for box 6 (dog 14)
+                block['box'] = 6
+            else:
+                block['box'] = 7  # Box 7 (dog 15)
     
     # Group blocks by (column, box)
     boxes_dict = {}
