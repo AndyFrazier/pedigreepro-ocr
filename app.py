@@ -71,26 +71,35 @@ def process_pedigree():
         print('Sorting pedigree text blocks by column structure...')
         pedigree_result = sort_pedigree_blocks_by_columns(pedigree_response.text_annotations)
         
-        # pedigree_result is now a dict with 'text' and 'debug' keys
-        pedigree_text = pedigree_result.get('text', '')
         debug_info = pedigree_result.get('debug', {})
         
-        # Fallback to default if sorting fails
-        if not pedigree_text:
-            print('Column sorting failed, using default text')
-            pedigree_text = pedigree_response.text_annotations[0].description if pedigree_response.text_annotations else ""
-        
-        print(f'Pedigree OCR complete: {len(pedigree_text)} chars')
-        print(f'First 500 chars: {pedigree_text[:500]}')
-        
-        print('Both images processed successfully with Google Vision!')
-        
-        return jsonify({
-            'success': True,
-            'detailsText': details_text,
-            'pedigreeText': pedigree_text,
-            'debugInfo': debug_info  # Add debug info to response
-        })
+        # Check if we have structured dogs array (new format) or text (legacy format)
+        if 'dogs' in pedigree_result:
+            # New format: Return structured dogs array
+            print(f'Pedigree OCR complete: {len(pedigree_result["dogs"])} dogs extracted')
+            return jsonify({
+                'success': True,
+                'detailsText': details_text,
+                'dogs': pedigree_result['dogs'],  # Structured array
+                'debugInfo': debug_info
+            })
+        else:
+            # Legacy format for sheep: Return text
+            pedigree_text = pedigree_result.get('text', '')
+            
+            # Fallback to default if sorting fails
+            if not pedigree_text:
+                print('Column sorting failed, using default text')
+                pedigree_text = pedigree_response.text_annotations[0].description if pedigree_response.text_annotations else ""
+            
+            print(f'Pedigree OCR complete: {len(pedigree_text)} chars')
+            
+            return jsonify({
+                'success': True,
+                'detailsText': details_text,
+                'pedigreeText': pedigree_text,
+                'debugInfo': debug_info
+            })
         
     except Exception as e:
         print(f'Error: {str(e)}')
@@ -197,33 +206,38 @@ def sort_pedigree_blocks_by_columns(text_annotations):
     sorted_keys = sorted(boxes_dict.keys(), key=lambda k: (k[0], k[1]))
     
     # Within each box, sort blocks by Y (top to bottom), then concatenate with newlines
-    dog_texts = []
-    for key in sorted_keys:
+    dogs_array = []
+    for idx, key in enumerate(sorted_keys):
         box_blocks = sorted(boxes_dict[key], key=lambda b: (b['top'], b['left']))
         dog_text = '\n'.join([b['text'] for b in box_blocks])  # Use newlines to preserve structure
         
-        # Remove age patterns like "( 15.3 yrs )" that confuse the parser
+        # Remove age patterns like "( 15.3 yrs )" that confuse parsing
         import re
         dog_text = re.sub(r'\(\s*\d+\.?\d*\s*yrs?\s*\)', '', dog_text)
         
-        dog_texts.append(dog_text)
+        # Extract year if present (for birth_date)
+        year_match = re.search(r'(\d{4})\s*-', dog_text)
+        birth_year = year_match.group(1) if year_match else None
+        
+        dogs_array.append({
+            'order': idx + 1,
+            'text': dog_text,
+            'birth_year': birth_year
+        })
     
     # Create dog list for debugging (first 80 chars of each)
     dog_list = []
-    for i, dog_text in enumerate(dog_texts):
-        preview = dog_text.replace('\n', ' ')[:80]
-        dog_list.append(f'Dog {i+1}: {preview}')
+    for dog in dogs_array:
+        preview = dog['text'].replace('\n', ' ')[:80]
+        dog_list.append(f"Dog {dog['order']}: {preview}")
     
-    # Join all dogs with newlines
-    sorted_text = '\n'.join(dog_texts)
-    
-    print(f'Successfully grouped {len(blocks)} blocks into {len(dog_texts)} dogs')
+    print(f'Successfully grouped {len(blocks)} blocks into {len(dogs_array)} dogs')
     
     return {
-        'text': sorted_text,
+        'dogs': dogs_array,  # Structured array of dogs
         'debug': {
             'totalBlocks': len(blocks),
-            'totalDogs': len(dog_texts),
+            'totalDogs': len(dogs_array),
             'width': int(width),
             'height': int(height),
             'dogList': dog_list  # Add list of dogs to debug output
