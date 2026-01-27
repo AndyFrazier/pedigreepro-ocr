@@ -201,6 +201,11 @@ def sort_pedigree_blocks_by_columns(text_annotations):
     for key in sorted_keys:
         box_blocks = sorted(boxes_dict[key], key=lambda b: (b['top'], b['left']))
         dog_text = '\n'.join([b['text'] for b in box_blocks])  # Use newlines to preserve structure
+        
+        # Remove age patterns like "( 15.3 yrs )" that confuse the parser
+        import re
+        dog_text = re.sub(r'\(\s*\d+\.?\d*\s*yrs?\s*\)', '', dog_text)
+        
         dog_texts.append(dog_text)
     
     # Create dog list for debugging (first 80 chars of each)
