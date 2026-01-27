@@ -1,186 +1,61 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-from google.cloud import vision
-from PIL import Image
-import io
-import os
-
-app = Flask(__name__)
-CORS(app)
-
-os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON'] = os.environ.get('GOOGLE_CLOUD_API_KEY', '')
-
-def get_vision_client():
-    api_key = os.environ.get('GOOGLE_CLOUD_API_KEY')
-    if not api_key:
-        raise ValueError("GOOGLE_CLOUD_API_KEY environment variable not set")
-    
-    from google.cloud.vision_v1 import ImageAnnotatorClient
-    from google.api_core.client_options import ClientOptions
-    
-    client_options = ClientOptions(api_key=api_key)
-    return ImageAnnotatorClient(client_options=client_options)
-
-@app.route('/', methods=['GET'])
-def home():
-    return jsonify({
-        'status': 'running',
-        'service': 'PedigreePro OCR Service (Google Vision)',
-        'version': '3.0 - Position-based sorting'
-    })
-
-@app.route('/health', methods=['GET'])
-def health():
-    return jsonify({'status': 'healthy'})
-
-@app.route('/process-pedigree', methods=['POST'])
-def process_pedigree():
-    try:
-        if 'detailsImage' not in request.files or 'pedigreeImage' not in request.files:
-            return jsonify({
-                'success': False,
-                'error': 'Both images required'
-            }), 400
-        
-        details_file = request.files['detailsImage']
-        pedigree_file = request.files['pedigreeImage']
-        
-        print('Initializing Google Cloud Vision client...')
-        client = get_vision_client()
-        
-        print('Processing details image with Google Vision...')
-        details_content = details_file.read()
-        details_image = vision.Image(content=details_content)
-        details_response = client.text_detection(image=details_image)
-        
-        if details_response.error.message:
-            raise Exception(f'Google Vision error: {details_response.error.message}')
-        
-        details_text = details_response.text_annotations[0].description if details_response.text_annotations else ""
-        print(f'Details OCR complete: {len(details_text)} chars')
-        
-        print('Processing pedigree image with Google Vision...')
-        pedigree_content = pedigree_file.read()
-        pedigree_image = vision.Image(content=pedigree_content)
-        pedigree_response = client.text_detection(image=pedigree_image)
-        
-        if pedigree_response.error.message:
-            raise Exception(f'Google Vision error: {pedigree_response.error.message}')
-        
-        pedigree_text = pedigree_response.text_annotations[0].description if pedigree_response.text_annotations else ""
-        print(f'Pedigree OCR complete: {len(pedigree_text)} chars')
-        
-        print('Both images processed successfully with Google Vision!')
-        
-        return jsonify({
-            'success': True,
-            'detailsText': details_text,
-            'pedigreeText': pedigree_text
-        })
-        
-    except Exception as e:
-        print(f'Error: {str(e)}')
-        import traceback
-        print(traceback.format_exc())
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
 def sort_text_blocks_by_position(text_annotations):
     """
-    Sort text blocks by their visual position (top-to-bottom, left-to-right).
-    Uses bounding box coordinates from Google Vision.
-    
-    text_annotations[0] is the full text, text_annotations[1:] are individual blocks.
+    Sort text blocks by pedigree column structure (left-to-right columns, top-to-bottom within each column).
+    Dynamically detects column boundaries.
     """
     if len(text_annotations) <= 1:
         return []
     
-    # Skip index 0 (full text) and get individual text blocks
     blocks = []
     for annotation in text_annotations[1:]:
-        # Get bounding box vertices
         vertices = annotation.bounding_poly.vertices
-        
-        # Calculate center point of bounding box
         x_coords = [v.x for v in vertices]
         y_coords = [v.y for v in vertices]
-        center_x = sum(x_coords) / len(x_coords)
-        center_y = sum(y_coords) / len(y_coords)
         
         blocks.append({
             'text': annotation.description,
-            'x': center_x,
-            'y': center_y,
+            'left': min(x_coords),
             'top': min(y_coords),
-            'left': min(x_coords)
+            'center_x': sum(x_coords) / len(x_coords),
+            'center_y': sum(y_coords) / len(y_coords)
         })
     
-    # Sort by Y coordinate (top to bottom), then X coordinate (left to right)
-    # Group by rows first (within 20 pixels Y tolerance)
-    sorted_blocks = sorted(blocks, key=lambda b: (b['top'], b['left']))
+    # Detect columns by clustering X-coordinates
+    x_positions = sorted(set([b['left'] for b in blocks]))
     
-    # Reconstruct text in visual reading order
+    # Find gaps in X-coordinates to identify column boundaries
+    gaps = []
+    for i in range(len(x_positions) - 1):
+        gap_size = x_positions[i + 1] - x_positions[i]
+        gaps.append({
+            'after_x': x_positions[i],
+            'gap_size': gap_size,
+            'index': i
+        })
+    
+    # Sort by gap size and take the 3 largest gaps as column boundaries
+    gaps.sort(key=lambda g: g['gap_size'], reverse=True)
+    column_boundaries = sorted([g['after_x'] for g in gaps[:3]])
+    
+    print(f'Detected column boundaries at X: {column_boundaries}')
+    
+    # Assign each block to a column
+    for block in blocks:
+        x = block['left']
+        if x <= column_boundaries[0]:
+            block['column'] = 1
+        elif x <= column_boundaries[1]:
+            block['column'] = 2
+        elif x <= column_boundaries[2]:
+            block['column'] = 3
+        else:
+            block['column'] = 4
+    
+    # Sort: first by column (left to right), then by Y within column (top to bottom)
+    sorted_blocks = sorted(blocks, key=lambda b: (b['column'], b['top']))
+    
+    # Reconstruct text
     sorted_text = '\n'.join([block['text'] for block in sorted_blocks])
     
-    print(f'Sorted {len(blocks)} text blocks by position')
+    print(f'Sorted {len(blocks)} blocks into 4 columns')
     return sorted_text
-
-@app.route('/process-sheep-pedigree', methods=['POST'])
-def process_sheep_pedigree():
-    try:
-        print('Received sheep pedigree image processing request')
-        
-        if 'pedigreeFile' not in request.files:
-            return jsonify({
-                'success': False,
-                'error': 'No image file provided'
-            }), 400
-        
-        image_file = request.files['pedigreeFile']
-        print(f'Processing image: {image_file.filename}')
-        
-        print('Initializing Google Cloud Vision client...')
-        client = get_vision_client()
-        
-        image_content = image_file.read()
-        
-        print('Calling Google Vision API for image...')
-        
-        image = vision.Image(content=image_content)
-        response = client.text_detection(image=image)
-        
-        if response.error.message:
-            raise Exception(f'Google Vision error: {response.error.message}')
-        
-        # NEW: Sort text blocks by position instead of using Google's default order
-        print('Sorting text blocks by position...')
-        sorted_text = sort_text_blocks_by_position(response.text_annotations)
-        
-        # Fallback to original method if sorting fails
-        if not sorted_text:
-            print('Position sorting failed, using default text')
-            sorted_text = response.text_annotations[0].description if response.text_annotations else ""
-        
-        print(f'OCR complete, extracted {len(sorted_text)} characters')
-        print(f'First 200 chars: {sorted_text[:200]}')
-        
-        return jsonify({
-            'success': True,
-            'text': sorted_text
-        })
-        
-    except Exception as e:
-        print(f'Error: {str(e)}')
-        import traceback
-        traceback.print_exc()
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
-
-if __name__ == '__main__':
-    import os
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
