@@ -103,13 +103,13 @@ def process_pedigree():
 
 def sort_pedigree_blocks_by_columns(text_annotations):
     """
-    Sort text blocks by pedigree column and box structure using hardcoded coordinates.
+    Sort text blocks by pedigree column and box structure using percentage-based grid.
     
-    Standard pedigree structure (4 columns, read left-to-right):
-    - Column 1: Main animal (1 box)
-    - Column 2: Parents (2 boxes)
-    - Column 3: Grandparents (4 boxes)
-    - Column 4: Great-grandparents (8 boxes)
+    Standard pedigree structure (4 equal columns, read left-to-right):
+    - Column 1: Main animal (1 box = 100% height)
+    - Column 2: Parents (2 boxes = 50% height each)
+    - Column 3: Grandparents (4 boxes = 25% height each)
+    - Column 4: Great-grandparents (8 boxes = 12.5% height each)
     
     Returns dict with 'text' and 'debug' keys
     """
@@ -134,86 +134,56 @@ def sort_pedigree_blocks_by_columns(text_annotations):
     if not blocks:
         return {'text': '', 'debug': {}}
     
-    print(f'Processing {len(blocks)} text blocks with hardcoded grid')
+    print(f'Processing {len(blocks)} text blocks with percentage-based grid')
     
-    # Get image dimensions from blocks
-    max_x = max(b['left'] for b in blocks) + 100  # approximate right edge
-    max_y = max(b['top'] for b in blocks) + 100   # approximate bottom edge
+    # Get the actual coordinate space from Google Vision
+    min_x = min(b['left'] for b in blocks)
+    max_x = max(b['left'] for b in blocks)
+    min_y = min(b['top'] for b in blocks)
+    max_y = max(b['top'] for b in blocks)
     
-    # Scale factors (assuming standard template size, but allowing for scaling)
-    # Standard dimensions: width ~1122, height ~1841
-    x_scale = max_x / 1122.0
-    y_scale = max_y / 1841.0
+    width = max_x - min_x
+    height = max_y - min_y
     
-    print(f'Detected scaling: X={x_scale:.2f}, Y={y_scale:.2f}')
+    print(f'Coordinate space: X={min_x} to {max_x} (width={width}), Y={min_y} to {max_y} (height={height})')
     
-    # Define column X boundaries (scaled)
-    col_boundaries = {
-        1: (0, int(225 * x_scale)),
-        2: (int(225 * x_scale), int(315 * x_scale)),
-        3: (int(315 * x_scale), int(457 * x_scale)),
-        4: (int(457 * x_scale), int(max_x))
-    }
-    
-    # Define box Y boundaries for each column (scaled)
-    # Y ranges calculated as percentages of usable height (24 to 1825)
-    top_border = int(24 * y_scale)
-    bottom_border = int(1825 * y_scale)
-    usable_height = bottom_border - top_border
-    
-    box_boundaries = {
-        1: [(top_border, bottom_border)],  # 1 box
-        2: [  # 2 boxes
-            (top_border, top_border + int(usable_height * 0.5)),
-            (top_border + int(usable_height * 0.5), bottom_border)
-        ],
-        3: [  # 4 boxes
-            (top_border, top_border + int(usable_height * 0.25)),
-            (top_border + int(usable_height * 0.25), top_border + int(usable_height * 0.5)),
-            (top_border + int(usable_height * 0.5), top_border + int(usable_height * 0.75)),
-            (top_border + int(usable_height * 0.75), bottom_border)
-        ],
-        4: [  # 8 boxes
-            (top_border, top_border + int(usable_height * 0.125)),
-            (top_border + int(usable_height * 0.125), top_border + int(usable_height * 0.25)),
-            (top_border + int(usable_height * 0.25), top_border + int(usable_height * 0.375)),
-            (top_border + int(usable_height * 0.375), top_border + int(usable_height * 0.5)),
-            (top_border + int(usable_height * 0.5), top_border + int(usable_height * 0.625)),
-            (top_border + int(usable_height * 0.625), top_border + int(usable_height * 0.75)),
-            (top_border + int(usable_height * 0.75), top_border + int(usable_height * 0.875)),
-            (top_border + int(usable_height * 0.875), bottom_border)
-        ]
-    }
-    
-    # Assign each block to a column and box
+    # Assign each block to a column (simple quarters)
     for block in blocks:
-        x = block['left']
-        y = block['top']
+        x_percent = (block['left'] - min_x) / width if width > 0 else 0
+        y_percent = (block['top'] - min_y) / height if height > 0 else 0
         
-        # Find column
-        block['column'] = None
-        for col_num, (x_min, x_max) in col_boundaries.items():
-            if x_min <= x < x_max:
-                block['column'] = col_num
-                break
+        # Determine column (4 equal quarters)
+        if x_percent < 0.25:
+            block['column'] = 1
+        elif x_percent < 0.5:
+            block['column'] = 2
+        elif x_percent < 0.75:
+            block['column'] = 3
+        else:
+            block['column'] = 4
         
-        if block['column'] is None:
-            block['column'] = 4  # Default to rightmost column
-        
-        # Find box within column
-        block['box'] = None
-        boxes_in_col = box_boundaries[block['column']]
-        for box_idx, (y_min, y_max) in enumerate(boxes_in_col):
-            if y_min <= y < y_max:
-                block['box'] = box_idx
-                break
-        
-        if block['box'] is None:
-            # If outside range, assign to nearest box
-            if y < boxes_in_col[0][0]:
+        # Determine box within column based on column
+        if block['column'] == 1:
+            # 1 box (100%)
+            block['box'] = 0
+        elif block['column'] == 2:
+            # 2 boxes (50% each)
+            block['box'] = 0 if y_percent < 0.5 else 1
+        elif block['column'] == 3:
+            # 4 boxes (25% each)
+            if y_percent < 0.25:
                 block['box'] = 0
+            elif y_percent < 0.5:
+                block['box'] = 1
+            elif y_percent < 0.75:
+                block['box'] = 2
             else:
-                block['box'] = len(boxes_in_col) - 1
+                block['box'] = 3
+        else:  # column 4
+            # 8 boxes (12.5% each)
+            block['box'] = int(y_percent * 8)
+            if block['box'] >= 8:
+                block['box'] = 7  # Cap at 7 (0-7 = 8 boxes)
     
     # Group blocks by (column, box)
     boxes_dict = {}
@@ -243,8 +213,8 @@ def sort_pedigree_blocks_by_columns(text_annotations):
         'debug': {
             'totalBlocks': len(blocks),
             'totalDogs': len(dog_texts),
-            'xScale': round(x_scale, 2),
-            'yScale': round(y_scale, 2)
+            'width': int(width),
+            'height': int(height)
         }
     }
 
