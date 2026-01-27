@@ -226,11 +226,11 @@ def sort_pedigree_blocks_by_columns(text_annotations):
     # Sort boxes in reading order (column 1 to 4, top to bottom within each column)
     sorted_keys = sorted(boxes_dict.keys(), key=lambda k: (k[0], k[1]))
     
-    # Within each box, sort blocks by Y (top to bottom), then concatenate
+    # Within each box, sort blocks by Y (top to bottom), then concatenate with newlines
     dog_texts = []
     for key in sorted_keys:
         box_blocks = sorted(boxes_dict[key], key=lambda b: (b['top'], b['left']))
-        dog_text = ' '.join([b['text'] for b in box_blocks])
+        dog_text = '\n'.join([b['text'] for b in box_blocks])  # Use newlines to preserve structure
         dog_texts.append(dog_text)
     
     # Join all dogs with newlines
